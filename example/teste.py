@@ -1,3 +1,6 @@
+import sys
+sys.path.append('../auto_angels')
+
 import pandas as pd 
 import numpy as np
 from autoangels import auto_angels
