@@ -3,11 +3,13 @@ from transformation import codificar, categorizar, one_hot_encoding
 from optimization import opt_grid_search, opt_random_search, opt_optuna
 from feature_selection import selecao_caracteristicas_sfs
 from balancing import random_undersampling
+from ensemble import voto_marjoritario, media_proba, stacking
 
 from sklearn.model_selection import train_test_split
 from sklearn.ensemble import RandomForestClassifier, AdaBoostClassifier, GradientBoostingClassifier
 from xgboost import XGBClassifier
 from sklearn.tree import DecisionTreeClassifier
+from lightgbm import LGBMClassifier
 import pandas as pd
 from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, roc_auc_score
 from sklearn.metrics import confusion_matrix
@@ -23,7 +25,8 @@ model_classes = {
         'AdaBoost': AdaBoostClassifier,
         'GradientBoost': GradientBoostingClassifier,
         'XGBoost': XGBClassifier,
-        'DecisionTree': DecisionTreeClassifier
+        'DecisionTree': DecisionTreeClassifier,
+        'lightGBM': LGBMClassifier
     }
 
 def preprocessing(dataset, features, target, test_size, missing, transformation, seed):
@@ -40,6 +43,9 @@ def preprocessing(dataset, features, target, test_size, missing, transformation,
     X = dataset_.drop(target, axis=1)
     y = dataset_[target]
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=test_size, random_state=seed, stratify=y)
+
+    print(y_train.value_counts())
+    print(y_test.value_counts())
 
     status_missing = False
     ### Tratamento de dados faltantes
@@ -247,11 +253,12 @@ def train(X_train, y_train, lista_de_features, models, opt_metric, opt_hyperpara
         print("----- Iniciando o treinamento -----")
 
         model.fit(X_train, y_train)
+        predicts = model.predict_proba(X_train)
 
         print("----- Finalizando o treinamento -----")
         print()
 
-        trained_models[model_name] = {'model':model, 'best_param':best_param, 'best_score': best_score}
+        trained_models[model_name] = {'model':model, 'best_param':best_param, 'best_score': best_score, 'train_predict':predicts}
         
     return trained_models
 
@@ -307,60 +314,57 @@ def test(X_test, y_test, lista_de_features, trained_models, metrics, ensemble):
 
         # Adiciona os resultados para o modelo ao dicionário de resultados
         results[model_name] = model_results
-    
-    if ensemble and len(trained_models)>1:
-
-
-        ##VOTO MAJORITARIO
-        # model_results = {}
-        # transposta = zip(*predictions)
-
-        # y_pred = [Counter(coluna).most_common(1)[0][0] for coluna in transposta]
-
-        ##MEDIA DAS PROBABILIDADES
-
-        soma_prob = []
-        for i, prob in enumerate(predictions):
-            print(prob)
-            if i == 0:
-                soma_prob = prob
-            else:
-                soma_prob = soma_prob + prob
-            
-            print(soma_prob)
-        
-        media_prob = soma_prob/len(predictions)
-
-        y_pred = np.argmax(media_prob, axis=1)
-
-        # Calcula as métricas especificadas
-        if 'accuracy' in metrics:
-            acc = accuracy_score(y_test, y_pred)
-            model_results['accuracy'] = acc
-        if 'precision' in metrics:
-            precision = precision_score(y_test, y_pred)
-            model_results['precision'] = precision
-        if 'recall' in metrics:
-            recall = recall_score(y_test, y_pred)
-            model_results['recall'] = recall
-        if 'f1' in metrics:
-            f1 = f1_score(y_test, y_pred)
-            model_results['f1'] = f1
-        if 'ROC-AUC' in metrics:
-            roc_auc = roc_auc_score(y_test, y_pred)
-            model_results['ROC-AUC'] = roc_auc
-        if 'specificity' in metrics:
-            specificity = calculate_specificity(y_test, y_pred)
-            model_results['specificity'] = specificity
-        
-        conf_matrix = confusion_matrix(y_test, y_pred)
-        model_results['confusion_matrix'] = conf_matrix
-
-        # Adiciona os resultados para o modelo ao dicionário de resultados
-        results['ensemble'] = model_results
 
     print("----- Finalizando os testes -----")
     print()
+
+    return results, predictions
+
+def exec_ensemble(ensemble, trained_models, results, predictions, X_train, y_train, X_test, y_test, metrics):
+    model_results = {}
+    name_model = 'ensemble'  
+
+    if ensemble == "major":
+        y_pred = voto_marjoritario(predictions)
+        name_model = 'ensemble-voto-majoritario'
+
+    elif ensemble == "mean":
+        y_pred = media_proba(predictions)
+        name_model = 'ensemble-mean'
+    
+    elif ensemble == "stacking":
+        y_pred = stacking(X_train, y_train, predictions, trained_models)
+        name_model = 'ensemble-stacking'
+
+    else:
+        y_pred = media_proba(predictions)
+        name_model = 'ensemble-mean'
+
+    # Calcula as métricas especificadas
+    if 'accuracy' in metrics:
+        acc = accuracy_score(y_test, y_pred)
+        model_results['accuracy'] = acc
+    if 'precision' in metrics:
+        precision = precision_score(y_test, y_pred)
+        model_results['precision'] = precision
+    if 'recall' in metrics:
+        recall = recall_score(y_test, y_pred)
+        model_results['recall'] = recall
+    if 'f1' in metrics:
+        f1 = f1_score(y_test, y_pred)
+        model_results['f1'] = f1
+    if 'ROC-AUC' in metrics:
+        roc_auc = roc_auc_score(y_test, y_pred)
+        model_results['ROC-AUC'] = roc_auc
+    if 'specificity' in metrics:
+        specificity = calculate_specificity(y_test, y_pred)
+        model_results['specificity'] = specificity
+    
+    conf_matrix = confusion_matrix(y_test, y_pred)
+    model_results['confusion_matrix'] = conf_matrix
+
+    # Adiciona os resultados para o modelo ao dicionário de resultados
+    results[name_model] = model_results
 
     return results
 

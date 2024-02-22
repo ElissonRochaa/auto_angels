@@ -3,7 +3,7 @@ sys.path.append('../auto_angels')
 
 import pandas as pd 
 import numpy as np
-from autoangels import auto_angels
+from auto_angels import auto_angels
 
 df = pd.read_csv('dataset_full_morte_fetal.csv')
 
@@ -16,7 +16,7 @@ target = 'target'
 
 missing = {'mean':['idade', 'mc_get_peso_anterior'], 'fixed-value':{'mc_get_risco_gestacional':-1, 'mc_dae_escolaridade':-1}}
 
-models = ['RandomForest', 'AdaBoost', 'GradientBoost']
+models = ['RandomForest', 'AdaBoost', 'GradientBoost', 'lightGBM']
 
 
 results = auto_angels(df, features, target, 
@@ -26,8 +26,8 @@ results = auto_angels(df, features, target,
                         models=models, 
                         #feature_selection='SFS', 
                         #feature_selection_models=2, 
-                        opt_hyperparam='Grid-search', 
-                        ensemble=True, 
+                        #opt_hyperparam='Grid-search', 
+                        ensemble=["stacking", "mean", "major"], 
                         opt_metric='accuracy'
                         )
 

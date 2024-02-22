@@ -1,5 +1,6 @@
 from sklearn.model_selection import GridSearchCV
 from sklearn.model_selection import RandomizedSearchCV
+from lightgbm import LGBMClassifier
 import warnings
 
 # Ignorar os FutureWarning

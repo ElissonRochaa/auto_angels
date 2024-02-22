@@ -1,12 +1,13 @@
 import pandas as pd
 import numpy as np
-from util import preprocessing, check_feature_selection, check_balancing, train, test, verificar_valores_vazios
+from util import preprocessing, check_feature_selection, check_balancing, train, test, verificar_valores_vazios, exec_ensemble
 import warnings
 import json
 from sklearn.ensemble import RandomForestClassifier, AdaBoostClassifier, GradientBoostingClassifier
 from xgboost import XGBClassifier
 from sklearn.tree import DecisionTreeClassifier
 from sklearn.metrics import make_scorer, matthews_corrcoef
+from lightgbm import LGBMClassifier
 
 # Ignorar os FutureWarning
 warnings.simplefilter(action='ignore', category=FutureWarning)
@@ -18,7 +19,7 @@ def auto_angels(dataset, features, target, test_size=0.3, feature_selection=None
     feature_selection_models=1, missing='remove', transformation=None, balancing=True, 
     models='RandomForest', metrics=['f1', 'accuracy', 'precision', 'recall', 'specificity'], 
     opt_metric='accuracy', opt_hyperparam=None, levels=None, n_jobs=-1, cv=5, save_model=False, 
-    path_save=None, ensemble=False, seed=42):
+    path_save=None, ensemble=None, seed=42):
 
     """
     Função que executa um pipeline de pré-processamento, treinamento, e teste de modelos de machine learning.
@@ -163,11 +164,11 @@ def auto_angels(dataset, features, target, test_size=0.3, feature_selection=None
     if not isinstance(balancing, (bool, dict)):
         raise ValueError("O parâmetro 'balancing' deve ser um booleano ou um dicionário.")
 
-    if isinstance(models, str) and models not in ['RandomForest', 'AdaBoost', 'GradientBoost', 'XGBoost', 'DecisionTree']:
-        raise ValueError("Se 'models' for uma string, deve ser uma das opções válidas: 'RandomForest', 'AdaBoost', 'GradientBoost', 'XGBoost', 'DecisionTree'.")
+    if isinstance(models, str) and models not in ['RandomForest', 'AdaBoost', 'GradientBoost', 'XGBoost', 'DecisionTree', 'lightGBM']:
+        raise ValueError("Se 'models' for uma string, deve ser uma das opções válidas: 'RandomForest', 'AdaBoost', 'GradientBoost', 'XGBoost', 'DecisionTree', 'lightGBM'.")
 
-    elif isinstance(models, list) and not all(model in ['RandomForest', 'AdaBoost', 'GradientBoost', 'XGBoost', 'DecisionTree'] for model in models):
-        raise ValueError("Se 'models' for uma lista, todos os elementos devem ser uma das opções válidas: 'RandomForest', 'AdaBoost', 'GradientBoost', 'XGBoost', 'DecisionTree'.")
+    elif isinstance(models, list) and not all(model in ['RandomForest', 'AdaBoost', 'GradientBoost', 'XGBoost', 'DecisionTree', 'lightGBM'] for model in models):
+        raise ValueError("Se 'models' for uma lista, todos os elementos devem ser uma das opções válidas: 'RandomForest', 'AdaBoost', 'GradientBoost', 'XGBoost', 'DecisionTree', 'lightGBM'.")
 
     valid_metrics = ['f1', 'accuracy', 'precision', 'recall', 'specificity', 'ROC-AUC', 'mcc']
 
@@ -194,7 +195,8 @@ def auto_angels(dataset, features, target, test_size=0.3, feature_selection=None
         'AdaBoost': AdaBoostClassifier,
         'GradientBoost': GradientBoostingClassifier,
         'XGBoost': XGBClassifier,
-        'DecisionTree': DecisionTreeClassifier
+        'DecisionTree': DecisionTreeClassifier,
+        'lightGBM': LGBMClassifier
     }
 
     if isinstance(levels, dict):
@@ -250,6 +252,14 @@ def auto_angels(dataset, features, target, test_size=0.3, feature_selection=None
                         'splitter': ['best', 'random'],
                         'max_depth': [None, 1, 3, 5, 7, 9, 11]
                     }
+                ],
+                'lightGBM': [
+                    {
+                        'n_estimators': [50, 100, 200],
+                        'learning_rate': [0.1, 0.01],
+                        'max_depth': [3, 5, 7],
+                        'min_child_samples': [10, 20, 50]
+                    }
                 ]
             }
     if not isinstance(cv, int) or cv < 2:
@@ -289,7 +299,16 @@ def auto_angels(dataset, features, target, test_size=0.3, feature_selection=None
     trained_models = train(X_train, y_train, lista_de_features, models, opt_metric, opt_hyperparam, levels, n_jobs, cv)
 
     ###Testar o modelo
-    results['results'] = test(X_test, y_test, lista_de_features, trained_models, metrics, ensemble)
+    results['results'], predictions = test(X_test, y_test, lista_de_features, trained_models, metrics, ensemble)
+
+    if ensemble is not None and len(trained_models)>1:
+        if isinstance(ensemble, str):
+            results['results'] = exec_ensemble(ensemble, trained_models, results['results'], predictions, X_train, y_train, X_test, y_test, metrics)
+        elif isinstance(ensemble, list):
+            for type_ensemble in ensemble:
+                results['results'] = exec_ensemble(type_ensemble, trained_models, results['results'], predictions, X_train, y_train, X_test, y_test, metrics)
+
+
     print("- O AutoAngels está encerrando -")
     print()
     

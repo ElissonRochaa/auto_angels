@@ -1,6 +1,9 @@
+import sys
+sys.path.append('../auto_angels')
+
 import pandas as pd 
 import numpy as np
-from autoangels import auto_angels
+from auto_angels import auto_angels
 
 # data = {'Nome': ['Alice', 'Bob', 'Charlie', None, 'David'],
 #         'Altura': [158, 175, 184, None, 184],
