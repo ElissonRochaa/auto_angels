@@ -16,7 +16,7 @@ with warnings.catch_warnings():
 
 
 def auto_angels(dataset, features, target, test_size=0.3, feature_selection=None, 
-    feature_selection_models=1, missing='remove', transformation=None, balancing=True, 
+    feature_selection_models=1, missing='remove', transformation=None, balancing='Under', 
     models='RandomForest', metrics=['f1', 'accuracy', 'precision', 'recall', 'specificity'], 
     opt_metric='accuracy', opt_hyperparam=None, levels=None, n_jobs=-1, cv=5, save_model=False, 
     path_save=None, ensemble=None, seed=42):
@@ -161,8 +161,11 @@ def auto_angels(dataset, features, target, test_size=0.3, feature_selection=None
                 if missing_features:
                     raise ValueError(f"As seguintes colunas para '{treatment}' não estão presentes nas colunas do dataset: {', '.join(missing_features)}")
 
-    if not isinstance(balancing, (bool, dict)):
-        raise ValueError("O parâmetro 'balancing' deve ser um booleano ou um dicionário.")
+    if not isinstance(balancing, (str, dict)):
+        raise ValueError("O parâmetro 'balancing' deve ser uma string ou um dicionário.")
+    
+    if isinstance(balancing, str) and balancing not in ['Under', 'Over', 'Hybrid', 'Imba']:
+        raise ValueError("Se 'balancing' for uma string, deve ser uma das opções: 'Under', 'Over', 'Hybrid' ou 'Imba'.")
 
     if isinstance(models, str) and models not in ['RandomForest', 'AdaBoost', 'GradientBoost', 'XGBoost', 'DecisionTree', 'lightGBM']:
         raise ValueError("Se 'models' for uma string, deve ser uma das opções válidas: 'RandomForest', 'AdaBoost', 'GradientBoost', 'XGBoost', 'DecisionTree', 'lightGBM'.")
@@ -273,11 +276,13 @@ def auto_angels(dataset, features, target, test_size=0.3, feature_selection=None
     datasets = [X_train, X_test]
     for data in datasets:
         colunas_com_valores_vazios = verificar_valores_vazios(data)
-        if isinstance(colunas_com_valores_vazios, list):
+        if isinstance(colunas_com_valores_vazios, dict):
             print("As seguintes colunas contêm valores vazios:")
-            print(colunas_com_valores_vazios)
+            for key, value in colunas_com_valores_vazios.items():
+                print(f"{key}: {value}")
             results['status'] = 1
             return results
+
 
     ###Verificar o balanceamento
     status_balancing, X_train, X_test, y_train, y_test = check_balancing(X_train, X_test, y_train, y_test, balancing, seed=seed)

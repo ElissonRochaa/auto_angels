@@ -25,7 +25,7 @@ def selecao_caracteristicas_sfs(X, y, model, forward=True, scoring='accuracy', c
 
     sfs = SequentialFeatureSelector(model,
                                     forward=forward, 
-                                    k_features=(1, X_train.shape[1]), 
+                                    k_features=(4, X_train.shape[1]), 
                                     floating=False, 
                                     verbose=1, 
                                     scoring=scoring, 

@@ -2,7 +2,7 @@ from missing import remove, mean, mode, fixed_value
 from transformation import codificar, categorizar, one_hot_encoding
 from optimization import opt_grid_search, opt_random_search, opt_optuna
 from feature_selection import selecao_caracteristicas_sfs
-from balancing import random_undersampling
+from balancing import random_undersampling, over_sampling_SMOTE, hybrid_sampling
 from ensemble import voto_marjoritario, media_proba, stacking
 
 from sklearn.model_selection import train_test_split
@@ -40,9 +40,34 @@ def preprocessing(dataset, features, target, test_size, missing, transformation,
     dataset_ = dataset_.dropna(subset=[target])
 
     #Dividir o dataset em treino e teste
-    X = dataset_.drop(target, axis=1)
-    y = dataset_[target]
-    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=test_size, random_state=seed, stratify=y)
+    # X = dataset_.drop(target, axis=1)
+    # y = dataset_[target]
+    # X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=test_size, random_state=seed, stratify=y)
+
+    dataset_['num_colunas_vazias'] = dataset_.isnull().sum(axis=1) 
+
+    dataset_minoritario = dataset_[dataset_[target] == 1]
+    dataset_majoritario = dataset_[dataset_[target] == 0]
+
+    dataset_minoritario = dataset_minoritario.sort_values(by='num_colunas_vazias')
+    dataset_majoritario = dataset_majoritario.sort_values(by='num_colunas_vazias')
+
+    quantidade_test = int(dataset_minoritario.shape[0]*test_size)
+
+    X_test_min = dataset_minoritario.head(quantidade_test)
+    X_train_min = dataset_minoritario.drop(X_test_min.index)
+
+    X_test_maj = dataset_majoritario.head(quantidade_test)
+    X_train_maj = dataset_majoritario.drop(X_test_maj.index)
+
+    X_train = pd.concat([X_train_min, X_train_maj])
+    X_test = pd.concat([X_test_min, X_test_maj])
+
+    y_train = X_train[target]
+    X_train = X_train.drop([target, 'num_colunas_vazias'], axis=1)
+
+    y_test = X_test[target]
+    X_test = X_test.drop([target, 'num_colunas_vazias'], axis=1)
 
     print(y_train.value_counts())
     print(y_test.value_counts())
@@ -141,21 +166,27 @@ def preprocessing(dataset, features, target, test_size, missing, transformation,
 
 def check_balancing(X_train, X_test, y_train, y_test, balancing, seed=42):
 
-    if balancing is not False:
-        print("----- Iniciando o Balanceamento -----")
-        if isinstance(balancing, bool):
+    print("----- Iniciando o Balanceamento -----")
+    if isinstance(balancing, str):
+        if balancing == 'Under':
             X_train, X_test, y_train, y_test = random_undersampling(X_train, X_test, y_train, y_test, seed=seed)
-        elif isinstance(balancing, dict):
-            X_train, X_test, y_train, y_test = random_undersampling(X_train, X_test, y_train, y_test, weight=balancing, seed=seed)
+        elif balancing == 'Over':
+            X_train, X_test, y_train, y_test = over_sampling_SMOTE(X_train, X_test, y_train, y_test, seed=seed)
+        elif balancing == 'Hybrid':
+            X_train, X_test, y_train, y_test = hybrid_sampling(X_train, X_test, y_train, y_test, seed=seed)
         else:
-            print("O parametro precisa ser booleano ou dicionario, será utilizado o default")
-            X_train, X_test, y_train, y_test = random_undersampling(X_train, X_test, y_train, y_test, seed=seed)
-        
-        print("----- Finalizando o Balanceamento -----")
-        print()
-        return True, X_train, X_test, y_train, y_test
+            return False, X_train, X_test, y_train, y_test
+    elif isinstance(balancing, dict):
+        X_train, X_test, y_train, y_test = random_undersampling(X_train, X_test, y_train, y_test, weight=balancing, seed=seed)
+    else:
+        print("O parametro precisa ser uma string ou dicionario, será utilizado o default")
+        X_train, X_test, y_train, y_test = random_undersampling(X_train, X_test, y_train, y_test, seed=seed)
+    
+    print("----- Finalizando o Balanceamento -----")
+    print()
+    return True, X_train, X_test, y_train, y_test
 
-    return False, X_train, X_test, y_train, y_test
+    
 
 def check_feature_selection(X_train, y_train, feature_selection, feature_selection_models, models, scoring, cv):
     
@@ -370,17 +401,21 @@ def exec_ensemble(ensemble, trained_models, results, predictions, X_train, y_tra
 
 def verificar_valores_vazios(dataset):
     """
-    Verifica se o dataset contém valores vazios e retorna as colunas com valores vazios, se houver.
+    Verifica se o dataset contém valores vazios e retorna as colunas com valores vazios e a porcentagem de valores vazios, se houver.
 
     Args:
     - dataset: DataFrame do pandas contendo os dados a serem verificados.
 
     Returns:
-    - Lista contendo os nomes das colunas com valores vazios, ou uma mensagem indicando que não há valores vazios.
+    - Dicionário onde as chaves são os nomes das colunas com valores vazios e os valores são as porcentagens de valores vazios.
     """
-    colunas_com_valores_vazios = dataset.columns[dataset.isnull().any()].tolist()
+    colunas_com_valores_vazios = dataset.columns[dataset.isnull().any()]
+    resultado = {}
 
-    if colunas_com_valores_vazios:
-        return colunas_com_valores_vazios
-    else:
-        return None
+    for coluna in colunas_com_valores_vazios:
+        total_valores = len(dataset[coluna])
+        valores_vazios = dataset[coluna].isnull().sum()
+        porcentagem_vazios = (valores_vazios / total_valores) * 100
+        resultado[coluna] = porcentagem_vazios
+
+    return resultado if resultado else None
