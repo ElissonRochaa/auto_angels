@@ -1,4 +1,4 @@
-from missing import remove, mean, mode, fixed_value
+from missing import remove, mean, mode, fixed_value, median
 from transformation import codificar, categorizar, one_hot_encoding
 from optimization import opt_grid_search, opt_random_search, opt_optuna
 from feature_selection import selecao_caracteristicas_sfs
@@ -16,6 +16,10 @@ from sklearn.metrics import confusion_matrix
 import warnings
 from collections import Counter
 import numpy as np
+import threading
+
+import os
+import pickle
 
 # Ignorar os FutureWarning
 warnings.simplefilter(action='ignore', category=FutureWarning)
@@ -28,6 +32,11 @@ model_classes = {
         'DecisionTree': DecisionTreeClassifier,
         'lightGBM': LGBMClassifier
     }
+
+
+def print_target(y_train, y_test):
+    print(y_train.value_counts())
+    print(y_test.value_counts())
 
 def preprocessing(dataset, features, target, test_size, missing, transformation, seed):
     print("----- Iniciando o pre-processamento -----")
@@ -54,6 +63,9 @@ def preprocessing(dataset, features, target, test_size, missing, transformation,
 
     quantidade_test = int(dataset_minoritario.shape[0]*test_size)
 
+
+    ########## Aqui estou separando o dataset de teste, dando prioridade para os melhores registros (registro sem dados faltantes ou que tem menos dados faltantes)
+    ########## Verificar se isso é uma boa estratégia!
     X_test_min = dataset_minoritario.head(quantidade_test)
     X_train_min = dataset_minoritario.drop(X_test_min.index)
 
@@ -69,8 +81,7 @@ def preprocessing(dataset, features, target, test_size, missing, transformation,
     y_test = X_test[target]
     X_test = X_test.drop([target, 'num_colunas_vazias'], axis=1)
 
-    print(y_train.value_counts())
-    print(y_test.value_counts())
+    print_target(y_train, y_test)
 
     status_missing = False
     ### Tratamento de dados faltantes
@@ -85,6 +96,11 @@ def preprocessing(dataset, features, target, test_size, missing, transformation,
             status_missing = 'mean'
             X_train = mean(X_train)
             X_test = mean(X_test)
+            
+        elif missing == 'median':
+            status_missing = 'median'
+            X_train = median(X_train)
+            X_test = median(X_test)
         
         elif missing == 'mode':
             status_missing = 'mode'
@@ -113,6 +129,11 @@ def preprocessing(dataset, features, target, test_size, missing, transformation,
             status_missing['mean'] = missing['mean']
             X_train = mean(X_train, missing['mean'])
             X_test = mean(X_test, missing['mean'])
+        
+        if 'median' in missing:
+            status_missing['median'] = missing['median']
+            X_train = median(X_train, missing['median'])
+            X_test = median(X_test, missing['median'])
         
         if 'mode' in missing:
             status_missing['mode'] = missing['mode']
@@ -164,7 +185,7 @@ def preprocessing(dataset, features, target, test_size, missing, transformation,
 
     return status_missing, status_transformation, X_train, X_test, y_train, y_test
 
-def check_balancing(X_train, X_test, y_train, y_test, balancing, seed=42):
+def check_balancing(X_train, X_test, y_train, y_test, balancing, hybrid_size=2, seed=42):
 
     print("----- Iniciando o Balanceamento -----")
     if isinstance(balancing, str):
@@ -173,7 +194,7 @@ def check_balancing(X_train, X_test, y_train, y_test, balancing, seed=42):
         elif balancing == 'Over':
             X_train, X_test, y_train, y_test = over_sampling_SMOTE(X_train, X_test, y_train, y_test, seed=seed)
         elif balancing == 'Hybrid':
-            X_train, X_test, y_train, y_test = hybrid_sampling(X_train, X_test, y_train, y_test, seed=seed)
+            X_train, X_test, y_train, y_test = hybrid_sampling(X_train, X_test, y_train, y_test, hybrid_size=hybrid_size, seed=seed)
         else:
             return False, X_train, X_test, y_train, y_test
     elif isinstance(balancing, dict):
@@ -184,11 +205,17 @@ def check_balancing(X_train, X_test, y_train, y_test, balancing, seed=42):
     
     print("----- Finalizando o Balanceamento -----")
     print()
+    print_target(y_train, y_test)
     return True, X_train, X_test, y_train, y_test
 
-    
 
-def check_feature_selection(X_train, y_train, feature_selection, feature_selection_models, models, scoring, cv):
+def thread_func(model_name, X_train, y_train, model_classes, lista_de_features, scoring, cv):
+    print(f"Iniciando o {model_name}")
+    model = model_classes[model_name]()
+    lista_de_features[model_name] = selecao_caracteristicas_sfs(X_train, y_train, model, scoring=scoring, cv=cv)
+    print(f"Finalizando o {model_name}")  
+
+def check_feature_selection(X_train, y_train, feature_selection, feature_selection_models, models, scoring, cv, n_jobs=-1, use_threading=False):
     
     status_feature_selection = False
     lista_de_features = {}
@@ -201,16 +228,26 @@ def check_feature_selection(X_train, y_train, feature_selection, feature_selecti
             if feature_selection_models > 1:
                 #'RandomForest', 'AdaBoost', 'GradientBoost', 'XGBoost', 'DecisionTree'
                 if isinstance(models, list):
-                    for model_name in models:
-                        print(model_name)
-                        model = model_classes[model_name]()
+                    if use_threading:
+                        threads = []
+                        for model_name in models:
+                            thread = threading.Thread(target=thread_func, args=(model_name, X_train, y_train, model_classes, lista_de_features, scoring, cv))
+                            thread.start()
+                            threads.append(thread)
+
+                        for thread in threads:
+                            thread.join()
+                    else:
+                        for model_name in models:
+                            print(model_name)
+                            model = model_classes[model_name]()
                         
-                        lista_de_features[model_name] = selecao_caracteristicas_sfs(X_train, y_train, model, scoring=scoring, cv=cv)
+                            lista_de_features[model_name] = selecao_caracteristicas_sfs(X_train, y_train, model, scoring=scoring, cv=cv, n_jobs=n_jobs)
                 elif isinstance(models, str):
                     model_name = models
                     print(model_name)
                     model = model_classes[model_name]()
-                    lista_de_features[model_name] = selecao_caracteristicas_sfs(X_train, y_train, model, scoring=scoring, cv=cv)
+                    lista_de_features[model_name] = selecao_caracteristicas_sfs(X_train, y_train, model, scoring=scoring, cv=cv, n_jobs=n_jobs)
                     
 
             else:
@@ -398,6 +435,30 @@ def exec_ensemble(ensemble, trained_models, results, predictions, X_train, y_tra
     results[name_model] = model_results
 
     return results
+
+
+def save_models(trained_models, base_dir='../runs'):
+    # Verifica se o diretório base existe, se não, cria-o
+    if not os.path.exists(base_dir):
+        os.makedirs(base_dir)
+
+    # Encontra o próximo número de execução
+    exec_number = 0
+    while os.path.exists(os.path.join(base_dir, f'exec{exec_number}')):
+        exec_number += 1
+
+    # Cria o diretório para esta execução
+    exec_dir = os.path.join(base_dir, f'exec{exec_number}')
+    os.makedirs(exec_dir)
+
+    # Salva cada modelo treinado em arquivos pickle dentro do diretório da execução
+    for model_name, model in trained_models.items():
+        model_filename = os.path.join(exec_dir, f'{model_name}.pkl')
+        with open(model_filename, 'wb') as f:
+            pickle.dump(model, f)
+
+    print(f'Modelos salvos em: {exec_dir}')
+
 
 def verificar_valores_vazios(dataset):
     """

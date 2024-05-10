@@ -1,6 +1,6 @@
 import pandas as pd
 import numpy as np
-from util import preprocessing, check_feature_selection, check_balancing, train, test, verificar_valores_vazios, exec_ensemble
+from util import preprocessing, check_feature_selection, check_balancing, train, test, verificar_valores_vazios, exec_ensemble, save_models
 import warnings
 import json
 from sklearn.ensemble import RandomForestClassifier, AdaBoostClassifier, GradientBoostingClassifier
@@ -9,6 +9,8 @@ from sklearn.tree import DecisionTreeClassifier
 from sklearn.metrics import make_scorer, matthews_corrcoef
 from lightgbm import LGBMClassifier
 
+import time
+
 # Ignorar os FutureWarning
 warnings.simplefilter(action='ignore', category=FutureWarning)
 with warnings.catch_warnings():
@@ -16,10 +18,10 @@ with warnings.catch_warnings():
 
 
 def auto_angels(dataset, features, target, test_size=0.3, feature_selection=None, 
-    feature_selection_models=1, missing='remove', transformation=None, balancing='Under', 
+    feature_selection_models=1, missing='remove', transformation=None, balancing='Under', hybrid_size=2.0, 
     models='RandomForest', metrics=['f1', 'accuracy', 'precision', 'recall', 'specificity'], 
     opt_metric='accuracy', opt_hyperparam=None, levels=None, n_jobs=-1, cv=5, save_model=False, 
-    path_save=None, ensemble=None, seed=42):
+    path_save="../runs", ensemble=None, seed=42, use_threading=False):
 
     """
     Função que executa um pipeline de pré-processamento, treinamento, e teste de modelos de machine learning.
@@ -39,12 +41,15 @@ def auto_angels(dataset, features, target, test_size=0.3, feature_selection=None
     feature_selection_models : int, opcional (padrão=1)
         Define o número de modelos a serem utilizados para selecionar as features.
     missing : str ou dict, opcional (padrão='remove')
-        Indica como tratar os valores vazios encontrados no conjunto de dados. Valores permitidos são 'remove', 'mean', 'mode',
+        Indica como tratar os valores vazios encontrados no conjunto de dados. Valores permitidos são 'remove', 'mean', 'mode', 'median' or 'fixed-value'
         ou um dicionário com tratamentos específicos para cada coluna.
     transformation : dict, opcional (padrão=None)
         Indica se será realizada alguma transformação no conjunto de dados, e quais colunas serão tratadas.
     balancing : bool ou dict, opcional (padrão=True)
         Indica se o conjunto de dados preprocessado será balanceado para o treinamento dos modelos.
+    hybrid_size: float (padrão 2.0)
+        Utilizado somente quando o param 'balancing' estiver a opção escolhida de 'Hybrid'
+        Esse valor representa o tamanho que será aumentado da classe minoritaria
     models : str ou list, opcional (padrão='RandomForest')
         Indica os modelos a serem treinados pelo autoangels.
     metrics : list, opcional (padrão=['f1', 'acc', 'precision', 'recall', 'especificity'])
@@ -66,10 +71,10 @@ def auto_angels(dataset, features, target, test_size=0.3, feature_selection=None
     """
 
     ##### SALVAR OS MODELOS OTIMIZADOS
-    ##### Fazer um Ensemble dos melhores modelos
     ##### Ter a opção de rodar 30x (ou selecionar a quantidade de vezes)
     ##### Fazer teste estatistico?
     ##### Configurar um bot de notificação no telegram?
+    ##### PARALELIZAR O TREINAMENTO (POR MODELO, POR EXEMPLO)
 
     results = {}
     results['status'] = 0
@@ -107,16 +112,16 @@ def auto_angels(dataset, features, target, test_size=0.3, feature_selection=None
     if not isinstance(feature_selection_models, int):
         raise ValueError("O parâmetro 'feature_selection_models' deve ser um inteiro.")
 
-    valid_missing_values = ['remove', 'mean', 'mode']
+    valid_missing_values = ['remove', 'mean', 'mode', 'median']
 
     if isinstance(missing, str):
         if missing not in valid_missing_values:
-            raise ValueError("Se 'missing' for uma string, deve ser uma das opções válidas: 'remove', 'mean', 'mode', 'fixed-value'.")
+            raise ValueError("Se 'missing' for uma string, deve ser uma das opções válidas: 'remove', 'mean', 'mode', 'median'")
 
     elif isinstance(missing, dict):
         valid_missing_values.append('fixed-value')
         if not all(key in valid_missing_values for key in missing.keys()):
-            raise ValueError("As chaves do dicionário 'missing' devem ser uma das opções válidas: 'remove', 'mean', 'mode', 'fixed-value'.")
+            raise ValueError("As chaves do dicionário 'missing' devem ser uma das opções válidas: 'remove', 'mean', 'mode', 'median', 'fixed-value'.")
         
         for treatment, columns in missing.items():
             if not isinstance(columns, list) and treatment != 'fixed-value':
@@ -231,7 +236,8 @@ def auto_angels(dataset, features, target, test_size=0.3, feature_selection=None
                 'AdaBoost': [
                     {
                         'n_estimators': [50, 100, 150, 200],
-                        'learning_rate': [0.01, 0.1, 0.5, 1]
+                        'learning_rate': [0.01, 0.1, 0.5, 1],
+                        'algorithm': 'SAMME'
                     }
                 ],
                 'GradientBoost': [
@@ -270,6 +276,8 @@ def auto_angels(dataset, features, target, test_size=0.3, feature_selection=None
 
     ### ---------------------------
 
+    inicio = time.time()
+
     ###Pre-processamento
     status_missing, status_transformation, X_train, X_test, y_train, y_test = preprocessing(dataset, features, target, test_size, missing, transformation, seed)
 
@@ -285,23 +293,44 @@ def auto_angels(dataset, features, target, test_size=0.3, feature_selection=None
 
 
     ###Verificar o balanceamento
-    status_balancing, X_train, X_test, y_train, y_test = check_balancing(X_train, X_test, y_train, y_test, balancing, seed=seed)
+    status_balancing, X_train, X_test, y_train, y_test = check_balancing(X_train, X_test, y_train, y_test, balancing, hybrid_size=hybrid_size, seed=seed)
     
     ### Preciso verificar se irá realizar feature selection ou não
+    
+    opt_metric_temp = opt_metric
     if opt_metric == 'mcc':
         mcc_scorer = make_scorer(matthews_corrcoef)
         opt_metric=mcc_scorer
+    
+    if opt_metric == 'ROC-AUC':
+        opt_metric='f1'
 
+    inicio_feature = time.time()
     status_feature_selection, lista_de_features = check_feature_selection(X_train, y_train, feature_selection, feature_selection_models, 
-                                                                            models, scoring=opt_metric, cv=cv)
-
+                                                                            models, scoring=opt_metric, cv=cv, n_jobs= n_jobs, use_threading=use_threading)
+    fim_feature = time.time()
+    
+    feature_time_exex = fim_feature - inicio_feature
     ###--------------------------
 
     print(lista_de_features)
 
 
+    if opt_metric_temp == 'ROC-AUC':
+        roc_auc_scorer = {'AUC': 'roc_auc'}
+        opt_metric=roc_auc_scorer
+
     ###Treinar o modelo
+    inicio_train = time.time()
     trained_models = train(X_train, y_train, lista_de_features, models, opt_metric, opt_hyperparam, levels, n_jobs, cv)
+    fim_train = time.time()
+    
+    train_time_exex = fim_train - inicio_train
+
+    #### SALVAR OS MODELOS TREINADOS\
+    if save_model:
+        save_models(trained_models, base_dir=path_save)
+
 
     ###Testar o modelo
     results['results'], predictions = test(X_test, y_test, lista_de_features, trained_models, metrics, ensemble)
@@ -314,6 +343,9 @@ def auto_angels(dataset, features, target, test_size=0.3, feature_selection=None
                 results['results'] = exec_ensemble(type_ensemble, trained_models, results['results'], predictions, X_train, y_train, X_test, y_test, metrics)
 
 
+    fim = time.time()
+    
+    time_exec = fim - inicio
     print("- O AutoAngels está encerrando -")
     print()
     
@@ -335,6 +367,9 @@ def auto_angels(dataset, features, target, test_size=0.3, feature_selection=None
         if infos['best_param'] is not None:
             results['optimization'][model_name] = (infos['best_param'], infos['best_score'])
 
+    results['time_exec'] = time_exec
+    results['feature_time_exex'] = feature_time_exex
+    results['train_time_exec'] = train_time_exex
 
     #results['optimization']
     # def convert_numpy_to_list(obj):

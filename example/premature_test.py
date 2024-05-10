@@ -5,7 +5,7 @@ import pandas as pd
 import numpy as np
 from auto_angels import auto_angels
 
-df = pd.read_csv('premature_first_data_set_recortado_nov_2015.csv', low_memory=False)  
+df = pd.read_csv('data_set_premature.csv', low_memory=False)  
 
 df = df[(df['mc_par_prematuro'].notnull()) | (df['mc_par_idade_gestacional_semana'].notnull())]
 

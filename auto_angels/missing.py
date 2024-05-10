@@ -13,6 +13,18 @@ def remove(X, y, columns=None):
         y_ = y.drop(indices_linhas_removidas)
         return X_, y_
 
+def median(dataset, columns=None):
+    if columns is None:
+        dataset = dataset.fillna(dataset.median())
+    else:
+        for column in columns:
+            if column in dataset.columns:
+                dataset.loc[:, column] = dataset[column].fillna(dataset[column].median())
+            else:
+                print("Mensagem de erro")
+    
+    return dataset
+
 def mean(dataset, columns=None):
     if columns is None:
         dataset = dataset.fillna(dataset.mean())

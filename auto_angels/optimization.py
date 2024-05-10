@@ -14,6 +14,7 @@ def opt_grid_search(X_train, y_train, model, param_grid, scoring='f1', n_jobs=-1
         param_grid=param_grid, # os hiperparametros que o grid vai percorrer
         cv=cv, # valor de k para o kfold, usado no cross-validation
         scoring=scoring, # métrica de avaliação usada para avaliar a performance dos hiperparametros
+        refit='AUC',
         n_jobs=n_jobs,
         verbose=1
     )

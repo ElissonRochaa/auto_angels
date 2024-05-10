@@ -8,7 +8,7 @@ import warnings
 # Ignorar os FutureWarning
 warnings.simplefilter(action='ignore', category=FutureWarning)
 
-def selecao_caracteristicas_sfs(X, y, model, forward=True, scoring='accuracy', cv=5):
+def selecao_caracteristicas_sfs(X, y, model, forward=True, scoring='accuracy', cv=5, n_jobs=1):
 
     # Divisão em conjunto de treinamento e teste
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42, stratify=y)
@@ -29,7 +29,8 @@ def selecao_caracteristicas_sfs(X, y, model, forward=True, scoring='accuracy', c
                                     floating=False, 
                                     verbose=1, 
                                     scoring=scoring, 
-                                    cv=cv)
+                                    cv=cv,
+                                    n_jobs=n_jobs)
 
     # Realiza a seleção de características
     
