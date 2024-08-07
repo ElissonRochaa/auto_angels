@@ -4,3 +4,4 @@ auto_angels/__pycache__
 runs/
 example/data_set_premature.csv
 example/dataset_full_morte_fetal_complementary.csv
+*__pycache__*

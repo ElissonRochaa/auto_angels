@@ -4,6 +4,7 @@ from optimization import opt_grid_search, opt_random_search, opt_optuna
 from feature_selection import selecao_caracteristicas_sfs
 from balancing import random_undersampling, over_sampling_SMOTE, hybrid_sampling
 from ensemble import voto_marjoritario, media_proba, stacking
+from custom_model import CustomModel
 
 from sklearn.model_selection import train_test_split
 from sklearn.ensemble import RandomForestClassifier, AdaBoostClassifier, GradientBoostingClassifier
@@ -519,3 +520,30 @@ def verificar_valores_vazios(dataset):
         resultado[coluna] = porcentagem_vazios
 
     return resultado if resultado else None
+
+def save4angels(results, dataset, models, base_dir='../runs'):
+    numeric_attribute = ["idade", "previous_weight"]
+    # Crie uma instância da classe CustomModel com seu modelo treinado e as colunas do dataset
+    custom_model = CustomModel(models[0], dataset, numeric_attribute)
+
+    # Verifica se o diretório base existe, se não, cria-o
+    if not os.path.exists(base_dir):
+        os.makedirs(base_dir)
+
+    # Encontra o próximo número de execução
+    exec_number = 0
+    while os.path.exists(os.path.join(base_dir, f'exec{exec_number}')):
+        exec_number += 1
+
+    # Cria o diretório para esta execução
+    exec_dir = os.path.join(base_dir, f'exec{exec_number}')
+    os.makedirs(exec_dir)
+
+    model_filename = os.path.join(exec_dir, f'model.pkl')
+
+    # Salve o objeto custom_model em um arquivo pickle
+    with open(model_filename, "wb") as f:
+        pickle.dump(custom_model, f)
+
+    print("Modelo salvo com sucesso!")
+

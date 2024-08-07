@@ -1,6 +1,6 @@
 import pandas as pd
 import numpy as np
-from util import preprocessing, check_feature_selection, check_balancing, train, test, verificar_valores_vazios, exec_ensemble, save_models, save_log
+from util import preprocessing, check_feature_selection, check_balancing, train, test, verificar_valores_vazios, exec_ensemble, save_models, save_log, save4angels
 import warnings
 import json
 from sklearn.ensemble import RandomForestClassifier, AdaBoostClassifier, GradientBoostingClassifier
@@ -22,7 +22,7 @@ with warnings.catch_warnings():
 def auto_angels(dataset, features, target, test_size=0.3, feature_selection=None, 
     feature_selection_models=1, missing='remove', transformation=None, balancing='Under', hybrid_size=2.0, 
     models='RandomForest', metrics=['f1', 'accuracy', 'precision', 'recall', 'specificity'], 
-    opt_metric='accuracy', opt_hyperparam=None, levels=None, n_jobs=-1, cv=5, save_model=False, 
+    opt_metric='accuracy', opt_hyperparam=None, levels=None, n_jobs=-1, cv=5, save_model=False, save_angels=False,
     path_save="../runs", ensemble=None, seed=42, use_threading=False, log_file='log.txt'):
 
     """
@@ -374,6 +374,9 @@ def auto_angels(dataset, features, target, test_size=0.3, feature_selection=None
     results['feature_time_exex'] = feature_time_exex
     results['train_time_exec'] = train_time_exex
 
+
+    if save_angels:
+        save4angels(results, X_train, trained_models)
     #results['optimization']
     # def convert_numpy_to_list(obj):
     #     if isinstance(obj, np.ndarray):

@@ -52,60 +52,43 @@ def main():
     #     'idade'
     # ]
     
-    features = [
-        #'mc_get_alcool',
-        'mc_get_gravidez_planejada',
-        'mc_get_peso_anterior',
-        'mc_get_risco_gestacional',
-        'mc_mul_est_civil',
-        'mc_pes_raca_etnia',
-        'mc_dae_diagnostico_desnutricao',
-        'mc_dae_escolaridade',
-        'has_arterial_hypertension',
-        'has_diabetes',
-        'has_cirurgia_pelvica',
-        #'has_cardiopatia',
-        'has_infeccao_urinaria',
-        'has_malformacao',
-        #'has_malformacao_familiar',
-        'has_gemelaridade',
-        #'has_gemelaridade_familiar',
-        #'has_les',
-        'sd_quant_gest',
-        'sd_quant_aborto',
-        'sd_quant_partos',
-        'sd_quant_partos_cesarios',
-        'time_between_pregnancies',
-        'idade'
-    ]
-    
+    columns = {
+        'mc_get_gravidez_planejada':'plan_pregnancy',
+        'mc_get_peso_anterior':'previous_weight',
+        'mc_get_risco_gestacional':'gestational_risk',
+        'mc_mul_est_civil':'marital_status',
+        'mc_pes_raca_etnia':'mother_race',
+        'mc_dae_diagnostico_desnutricao': 'food_insecurity',
+        'mc_dae_escolaridade':'schooling',
+        'has_arterial_hypertension':'has_hypertension',
+        'has_diabetes':'has_diabetes',
+        'has_cirurgia_pelvica':'has_pelvic_surgery',
+        'has_infeccao_urinaria':'has_urinary_infection',
+        'has_malformacao':'has_congenital_malformation',
+        'has_gemelaridade':'has_family_twinship',
+        'sd_quant_gest':'amount_gestation',
+        'sd_quant_aborto':'amount_abortion',
+        'sd_quant_partos':'amount_deliveries',
+        'sd_quant_partos_cesarios': 'amount_cesarean',
+        'time_between_pregnancies': 'time_between_pregnancies',
+        'idade':'age'
+    }
+
     target = 'mc_par_prematuro'
     
-    #missing = {'mean':['idade', 'mc_get_peso_anterior'], 'fixed-value':{'mc_get_risco_gestacional':-1, 'mc_dae_escolaridade':-1}}
-    missing = {'mean':['idade', 'mc_get_peso_anterior'], 'fixed-value':{
-                                                #'mc_get_alcool':-1, 
-                                                'mc_get_gravidez_planejada': -1,
-                                                'mc_get_risco_gestacional':-1,
-                                                'mc_mul_est_civil':-1,
-                                                'mc_pes_raca_etnia':-1,
-                                                'mc_dae_diagnostico_desnutricao':-1,
-                                                'mc_dae_escolaridade':-1,
-                                                }
+    df.rename(columns=columns)
+
+    features = list(columns.values())
+
+    missing = {
+        'mean':['age', 'previous_weight'], 
+        'fixed-value':{ 'plan_pregnancy': -1,'gestational_risk':-1,
+                       'marital_status':-1,'mother_race':-1,
+                       'food_insecurity':-1,'schooling':-1}
         }
-    
-    # transformation = {
-    #     'one-hot-encoding':['mc_get_gravidez_planejada',
-    #                         'mc_get_risco_gestacional',
-    #                         'mc_mul_est_civil',
-    #                         'mc_pes_raca_etnia',
-    #                         'mc_dae_diagnostico_desnutricao',
-    #                         'mc_dae_escolaridade'
-    #                        ]
-    # }
     
     models = ['RandomForest', 'AdaBoost', 'GradientBoost', 'XGBoost', 'DecisionTree']
     metrics = ['f1', 'accuracy', 'precision', 'recall', 'specificity', 'ROC-AUC']
-    #models = ['RandomForest']
 
     balancing = {'Under':[1], 'Hybrid': [1.5, 2, 3]}
     
@@ -132,7 +115,7 @@ def main():
                                     hybrid_size=s,
                                     models=models,
                                     metrics=metrics,
-                                    feature_selection=fs, 
+                                    feature_selection='SFS', 
                                     feature_selection_models=2, 
                                     opt_hyperparam='Grid-search', 
                                     #ensemble=["stacking", "mean", "major"], 
